@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>All Recordings</title>
+
+<link rel="stylesheet"
+ href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+<style>
+body {
+    font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial;
+    background: #f5f5f5;
+    margin: 0; padding: 0;
+}
+.container{
+    max-width: 700px;
+    margin: 2em auto;
+}
+.card{
+    background:white;
+    border-radius:15px;
+    padding:1em;
+    margin-bottom:1em;
+    box-shadow:0 4px 20px rgba(0,0,0,0.08);
+    display:flex;
+    justify-content: space-between;
+    align-items:center;
+}
+.info{
+    flex: 1;
+}
+.recording-date{
+    font-weight:600;
+}
+.actions button{
+    margin-left: 0.5em;
+    padding: 0.5em 0.7em;
+    border:none;
+    border-radius:8px;
+    cursor:pointer;
+    font-weight:600;
+}
+.actions button.qr{ background:#1976D2; color:white;}
+.actions button.play{ background:#e3f2fd; color:#1976D2;}
+.pagination{
+    text-align:center;
+    margin-top:2em;
+}
+.pagination button{
+    margin:0 0.2em;
+    padding:0.5em 0.8em;
+    border:none;
+    border-radius:8px;
+    cursor:pointer;
+}
+#recorderBtn {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 60px;
+    height: 60px;
+    background: #1976D2;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    text-decoration: none;
+    transition: 0.3s;
+}
+#recorderBtn:hover {
+    background: #115293;
+    transform: scale(1.05);
+}
+</style>
+</head>
+<body>
+
+<div class="container" id="recordings"></div>
+<div class="pagination" id="pagination"></div>
+
+<a href="/record" id="recorderBtn" title="Go to Recorder">
+    <i class="fas fa-microphone"></i>
+</a>
+
+<!-- Single audio player for all playback -->
+<audio id="player" style="display:none;"></audio>
+
+<script>
+let currentPage = 1;
+let currentPlayingBtn = null;
+const player = document.getElementById("player");
+
+function printQR(qrUrl) {
+    const w = window.open("", "_blank", "width=250,height=250");
+    const html = `
+    <html>
+    <head>
+    <style>
+        body {
+            margin:0;
+            display:flex;
+            justify-content:center;
+            align-items:center;
+            height:100vh;
+        }
+        img {
+            width:2cm;
+            height:2cm;
+        }
+    </style>
+    </head>
+    <body>
+        <img id="qr" src="${qrUrl}" />
+        <script>
+            const img = document.getElementById('qr');
+            img.onload = () => {
+                window.print();
+                setTimeout(() => window.close(), 500);
+            };
+        <\/script>
+    </body>
+    </html>
+    `;
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+}
+
+function playRecording(btn, url){
+    // Pause currently playing if different
+    if(currentPlayingBtn && currentPlayingBtn !== btn){
+        player.pause();
+        currentPlayingBtn.innerHTML = '<i class="fas fa-play"></i>';
+    }
+
+    if(player.src !== url){
+        player.src = url;
+    }
+
+    // toggle play/pause
+    if(player.paused){
+        player.play().catch(err=>{
+            console.log("Playback failed:", err);
+        });
+        currentPlayingBtn = btn;
+        btn.innerHTML = '<i class="fas fa-pause"></i>';
+    }else{
+        player.pause();
+        btn.innerHTML = '<i class="fas fa-play"></i>';
+        currentPlayingBtn = null;
+    }
+
+    player.onended = ()=>{
+        if(btn) btn.innerHTML = '<i class="fas fa-play"></i>';
+        currentPlayingBtn = null;
+    };
+}
+
+function copyLink(url){
+    navigator.clipboard.writeText(url)
+        .then(() => {})
+        .catch(err => {
+            console.error("Failed to copy: ", err);
+        });
+}
+
+function loadPage(page){
+    fetch(`/recordings?page=${page}`)
+    .then(r=>r.json())
+    .then(data=>{
+        const container = document.getElementById("recordings");
+        container.innerHTML = "";
+
+        data.recordings.forEach(rec=>{
+            const div = document.createElement("div");
+            div.className = "card";
+            div.innerHTML = `
+                <div class="info">
+                    <div class="recording-date">📅 ${rec.date}</div>
+                </div>
+                <div class="actions">
+                    <button class="qr" onclick="copyLink('${rec.play_url}')"><i class="fas fa-link"></i></button>                
+                    <button class="qr" onclick="printQR('${rec.qr_url}')"><i class="fas fa-qrcode"></i></button>
+                    <button class="play" onclick="playRecording(this, '${rec.audio_url}')"><i class="fas fa-play"></i></button>
+                </div>
+            `;
+            container.appendChild(div);
+        });
+
+        // pagination
+        const pagination = document.getElementById("pagination");
+        pagination.innerHTML = "";
+        for(let i=1;i<=data.total_pages;i++){
+            const btn = document.createElement("button");
+            btn.textContent = i;
+            if(i===data.page) btn.disabled=true;
+            btn.onclick=()=>loadPage(i);
+            pagination.appendChild(btn);
+        }
+
+        currentPage = data.page;
+    });
+}
+
+loadPage(1);
+</script>
+
+</body>
+</html>
